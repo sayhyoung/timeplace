@@ -120,7 +120,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openPrivacyPolicy() {
-        val uri = Uri.parse("https://janesam.tistory.com/2")
+        val uri = Uri.parse("https://sites.google.com/view/timestampcam/%ED%99%88")
         startActivity(Intent(Intent.ACTION_VIEW, uri))
     }
 }

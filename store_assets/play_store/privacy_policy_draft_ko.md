@@ -1,6 +1,6 @@
 # 개인정보처리방침 초안
 
-게시 URL: https://janesam.tistory.com/2
+게시 URL: https://sites.google.com/view/timestampcam/%ED%99%88
 
 인증샷 카메라는 사용자의 사진 촬영과 기록 정리를 돕기 위해 필요한 최소 권한만 사용합니다.
 

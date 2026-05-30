@@ -4,19 +4,19 @@
 
 - 앱 이름: 인증샷 카메라 - 시간 장소 스탬프
 - 런처 표시명: 인증샷 카메라
-- 배포 버전: 1.1.1 (versionCode 4)
-- 업로드 AAB: `store_assets/release/stampcam-com.jane.stampcam-v1.1.1-4.aab`
+- 배포 버전: 1.1.2 (versionCode 5)
+- 업로드 AAB: `store_assets/release/stampcam-com.jane.stampcam-v1.1.2-5.aab`
 - 기본 언어: 한국어
 - 카테고리 후보: 사진 / 생산성 / 라이프스타일 중 선택
 - 연락처 이메일: yoonsam2017@gmail.com
-- 개인정보처리방침 URL: https://janesam.tistory.com/2
+- 개인정보처리방침 URL: https://sites.google.com/view/timestampcam/%ED%99%88
 
 ## 스토어 등록 자료
 
 - 앱 아이콘: `store_assets/logo/play_store_icon_512.png`
 - 로고 원본: `store_assets/logo/app_logo_concept.svg`
 - 소개 문구: `store_assets/play_store/listing_ko.md`
-- 개인정보처리방침 URL: `https://janesam.tistory.com/2`
+- 개인정보처리방침 URL: `https://sites.google.com/view/timestampcam/%ED%99%88`
 - 스크린샷: 실제 기기에서 6장 이상 캡처 권장
 
 ## 업로드 전 필수 확인
@@ -27,7 +27,7 @@
 - 앱 버전명/버전코드 확인
 - Kakao REST API 키를 release 빌드에 주입
 - 위치/카메라/사진 권한 설명 확인
-- 개인정보처리방침 URL 등록: `https://janesam.tistory.com/2`
+- 개인정보처리방침 URL 등록: `https://sites.google.com/view/timestampcam/%ED%99%88`
 - 데이터 보안 설문 작성
 - 콘텐츠 등급 설문 작성
 - 테스트 트랙 내부 테스트 업로드

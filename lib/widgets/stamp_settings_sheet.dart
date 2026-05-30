@@ -113,7 +113,9 @@ class _StampSettingsSheetState extends State<StampSettingsSheet> {
       await _actionsChannel.invokeMethod<void>('openPrivacyPolicy');
     } catch (_) {
       await Clipboard.setData(
-        const ClipboardData(text: 'https://janesam.tistory.com/2'),
+        const ClipboardData(
+          text: 'https://sites.google.com/view/timestampcam/%ED%99%88',
+        ),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -583,7 +585,7 @@ class _StampSettingsSheetState extends State<StampSettingsSheet> {
           _supportTile(
             icon: Icons.privacy_tip_outlined,
             title: '개인정보처리방침',
-            subtitle: 'janesam.tistory.com/2',
+            subtitle: 'sites.google.com/view/timestampcam',
             onTap: _openPrivacyPolicy,
           ),
           const Divider(color: _line, height: 18),
@@ -593,7 +595,7 @@ class _StampSettingsSheetState extends State<StampSettingsSheet> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '인증샷 카메라  1.1.1',
+                  '인증샷 카메라  1.1.2',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 12,
