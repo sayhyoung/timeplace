@@ -657,8 +657,38 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
     );
   }
 
+  /// 각 스타일은 자기 템플릿에 맞는 줄 구조를 갖는다(특히 빅타임은
+  /// [시각, 날짜, 연도, 주소] 구조). 썸네일에 현재 스타일의 줄을 그대로
+  /// 넘기면 구조가 어긋나 가로로 넘쳐 overflow가 발생하므로,
+  /// 스타일별로 올바른 줄을 계산한다.
+  List<String> _previewLinesFor(StampStyle style) {
+    final clone = StampConfiguration(
+      timeMode: _config.timeMode,
+      hourFormat: _config.hourFormat,
+      placeMode: _config.placeMode,
+      position: _config.position,
+      memo: _config.memo,
+      fontScale: _config.fontScale,
+      language: _config.language,
+      styleId: style.id,
+      stampColor: _config.stampColor,
+      memoSize: _config.memoSize,
+      memoOutlineColor: _config.memoOutlineColor,
+      memoTextColor: _config.memoTextColor,
+      memoFont: _config.memoFont,
+      tapToCapture: _config.tapToCapture,
+      shutterSound: _config.shutterSound,
+    );
+    final result = clone.infoLines(
+      widget.capturedAt,
+      widget.address,
+      widget.coordinate,
+      systemLanguageCode: currentSystemLanguageCode(),
+    );
+    return result.isEmpty ? const ['TIME'] : result;
+  }
+
   Widget _buildStyleStrip({required bool compact}) {
-    final lines = _infoLines.isEmpty ? const ['TIME'] : _infoLines;
     final mood = _moodCollections.firstWhere(
       (m) => m.id == _moodId,
       orElse: () => _moodCollections.first,
@@ -708,7 +738,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                 return _StylePreviewCard(
                   imageBytes: widget.imageBytes,
                   style: style,
-                  lines: lines,
+                  lines: _previewLinesFor(style),
                   stampColor: _config.stampColor,
                   selected: selected,
                   compact: compact,
@@ -971,11 +1001,14 @@ class _StylePreviewCard extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.all(10),
                           child: style.template == StampTextTemplate.timeMark
-                              ? TimeMarkStamp(
-                                  lines: lines,
-                                  fontSize: compact ? 4.5 : 6,
-                                  style: style,
-                                  stampColor: stampColor,
+                              ? FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: TimeMarkStamp(
+                                    lines: lines,
+                                    fontSize: compact ? 4.5 : 6,
+                                    style: style,
+                                    stampColor: stampColor,
+                                  ),
                                 )
                               : OutlinedStampText(
                                   text: _previewTextFor(style, lines),

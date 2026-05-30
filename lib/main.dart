@@ -517,6 +517,7 @@ class _CameraScreenState extends State<CameraScreen>
             if (_countdown != null) _buildCountdownOverlay(),
             _buildFlashOverlay(),
             if (!_isIdle && _isPreviewBlank) _buildWakeHint(),
+            if (_isCapturing && _countdown == null) _buildProcessingOverlay(),
             if (_isIdle) _buildIdleOverlay(),
             Positioned(left: 18, top: 14, right: 18, child: _buildHeader()),
             Positioned(
@@ -584,6 +585,45 @@ class _CameraScreenState extends State<CameraScreen>
     if (_cameras.isEmpty || _isCapturing) return false;
     final ctrl = _controller;
     return ctrl == null || !ctrl.value.isInitialized;
+  }
+
+  /// 촬영 직후 EXIF 처리 동안 표시되는 안내. 리뷰 화면이 뜨면 그 위에 가려진다.
+  Widget _buildProcessingOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withAlpha(120),
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+          decoration: BoxDecoration(
+            color: Colors.black.withAlpha(160),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 14),
+              Text(
+                '처리 중입니다…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildWakeHint() {

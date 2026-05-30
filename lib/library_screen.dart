@@ -432,34 +432,108 @@ class _CaptureTile extends StatelessWidget {
     );
   }
 
+  // 시트 반환 sentinel: -1=폴더에서 빼기, -2=새 폴더 만들기
   Future<void> _chooseFolder(BuildContext context) async {
     final id = await showModalBottomSheet<int?>(
       context: context,
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (record.folderId != null)
-              ListTile(
-                leading: const Icon(Icons.folder_off_outlined),
-                title: const Text('폴더에서 빼기'),
-                onTap: () => Navigator.pop(context, -1),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '폴더로 이동',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
-            for (final f in folders)
               ListTile(
-                leading: const Icon(Icons.folder_outlined),
-                title: Text(f.name),
-                selected: record.folderId == f.id,
-                onTap: () => Navigator.pop(context, f.id),
+                leading: const Icon(Icons.create_new_folder_outlined),
+                title: const Text('새 폴더 만들기'),
+                onTap: () => Navigator.pop(context, -2),
               ),
-          ],
+              if (record.folderId != null)
+                ListTile(
+                  leading: const Icon(Icons.folder_off_outlined),
+                  title: const Text('폴더에서 빼기'),
+                  onTap: () => Navigator.pop(context, -1),
+                ),
+              if (folders.isEmpty && record.folderId == null)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '아직 만든 폴더가 없습니다. 새 폴더를 만들어 보세요.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ),
+              for (final f in folders)
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text(f.name),
+                  selected: record.folderId == f.id,
+                  trailing: record.folderId == f.id
+                      ? const Icon(Icons.check, color: Color(0xFF1F7A5C))
+                      : null,
+                  onTap: () => Navigator.pop(context, f.id),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
     if (id == null || record.id == null) return;
-    await CaptureDb.updateFolder(record.id!, id == -1 ? null : id);
+
+    int? targetFolderId;
+    if (id == -1) {
+      targetFolderId = null;
+    } else if (id == -2) {
+      if (!context.mounted) return;
+      final name = await _promptFolderName(context);
+      final trimmed = name?.trim();
+      if (trimmed == null || trimmed.isEmpty) return;
+      targetFolderId = await CaptureDb.createFolder(trimmed);
+    } else {
+      targetFolderId = id;
+    }
+
+    await CaptureDb.updateFolder(record.id!, targetFolderId);
     if (context.mounted) Navigator.pop(context);
     onChanged();
+  }
+
+  Future<String?> _promptFolderName(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('폴더 만들기'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '예: 5월 식단 기록'),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) => Navigator.pop(dialogContext, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('만들기'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirmDelete(BuildContext context) async {

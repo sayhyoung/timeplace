@@ -593,7 +593,7 @@ class _StampSettingsSheetState extends State<StampSettingsSheet> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '인증샷 카메라  1.1.0',
+                  '인증샷 카메라  1.1.1',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 12,

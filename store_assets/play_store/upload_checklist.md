@@ -4,6 +4,8 @@
 
 - 앱 이름: 인증샷 카메라 - 시간 장소 스탬프
 - 런처 표시명: 인증샷 카메라
+- 배포 버전: 1.1.1 (versionCode 4)
+- 업로드 AAB: `store_assets/release/stampcam-com.jane.stampcam-v1.1.1-4.aab`
 - 기본 언어: 한국어
 - 카테고리 후보: 사진 / 생산성 / 라이프스타일 중 선택
 - 연락처 이메일: yoonsam2017@gmail.com

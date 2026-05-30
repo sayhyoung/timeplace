@@ -562,7 +562,7 @@ class StampStyle {
 
   static final StampStyle timeMark = StampStyle(
     id: 'timemark',
-    displayName: '타임마크',
+    displayName: '빅타임',
     fontFactory: () => GoogleFonts.robotoSlab(),
     fontWeight: FontWeight.w700,
     textColor: Colors.white,
