@@ -30,6 +30,9 @@ class StampItem {
   final bool fullCanvasFrame;
   final EdgeInsets framePadding;
 
+  /// 'standard' 또는 'timeMark' 등 특수 레이아웃 식별자.
+  final String template;
+
   const StampItem({
     required this.lines,
     required this.normalizedCenter,
@@ -57,6 +60,7 @@ class StampItem {
     this.frameShape = 'none',
     this.fullCanvasFrame = false,
     this.framePadding = EdgeInsets.zero,
+    this.template = 'standard',
   });
 }
 
@@ -86,7 +90,11 @@ class StampRenderer {
 
     for (final item in items) {
       if (item.lines.isEmpty) continue;
-      _drawItem(canvas, item, imgW, imgH);
+      if (item.template == 'timeMark') {
+        _drawTimeMark(canvas, item, imgW, imgH);
+      } else {
+        _drawItem(canvas, item, imgW, imgH);
+      }
     }
 
     final picture = recorder.endRecording();
@@ -248,6 +256,158 @@ class StampRenderer {
     }
     strokePainter?.paint(canvas, textOrigin);
     fillPainter.paint(canvas, textOrigin);
+  }
+
+  /// 타임마크 레이아웃을 사진 위에 직접 그린다.
+  /// lines: [0]=시각(큰글씨), [1]=날짜, [2]=연도, [3]=주소(선택).
+  static void _drawTimeMark(
+    Canvas canvas,
+    StampItem item,
+    double imgW,
+    double imgH,
+  ) {
+    final shortSide = imgW.clamp(0, imgH);
+    final isPortrait = imgH > imgW;
+    final ratio = isPortrait ? 0.038 : 0.028;
+    final maxSize = isPortrait ? 92.0 : 72.0;
+    final baseFont =
+        (shortSide * ratio).clamp(28.0, maxSize) * item.fontScale;
+
+    final timeSize = baseFont * 2.45;
+    final dateSize = baseFont * 0.82;
+    final locSize = baseFont * 0.78;
+    final gap = baseFont * 0.5;
+    final gap2 = baseFont * 0.35;
+    final dividerW = (baseFont * 0.14).clamp(1.5, 4.0);
+    final dividerH = timeSize * 0.74;
+
+    final time = item.lines.isNotEmpty ? item.lines[0] : '';
+    final dateLine = item.lines.length > 1 ? item.lines[1] : '';
+    final yearLine = item.lines.length > 2 ? item.lines[2] : '';
+    final location = item.lines.length > 3 ? item.lines[3] : null;
+
+    final timeTp = _tmText(time, timeSize, FontWeight.w800, item);
+    final dateTp = _tmText(dateLine, dateSize, FontWeight.w700, item);
+    final yearTp = _tmText(yearLine, dateSize, FontWeight.w500, item);
+    final maxLocWidth = imgW * 0.82;
+    final locTp = location == null
+        ? null
+        : _tmText(
+            location,
+            locSize,
+            FontWeight.w500,
+            item,
+            maxWidth: maxLocWidth,
+          );
+
+    final dateColW = dateTp.$1.width > yearTp.$1.width
+        ? dateTp.$1.width
+        : yearTp.$1.width;
+    final dateColH = dateTp.$1.height + yearTp.$1.height;
+    final rowH = timeTp.$1.height > dateColH ? timeTp.$1.height : dateColH;
+    final rowW = timeTp.$1.width + gap + dividerW + gap + dateColW;
+
+    final blockW = (locTp != null && locTp.$1.width > rowW)
+        ? locTp.$1.width
+        : rowW;
+    final blockH = rowH + (locTp != null ? gap2 + locTp.$1.height : 0.0);
+
+    final cx = item.normalizedCenter.dx * imgW;
+    final cy = item.normalizedCenter.dy * imgH;
+    final maxOriginX = imgW >= blockW ? imgW - blockW : 0.0;
+    final maxOriginY = imgH >= blockH ? imgH - blockH : 0.0;
+    final originX = (cx - blockW / 2).clamp(0.0, maxOriginX);
+    final originY = (cy - blockH / 2).clamp(0.0, maxOriginY);
+
+    // 시각 (행 내 수직 중앙)
+    _paintTm(canvas, timeTp, Offset(originX, originY + (rowH - timeTp.$1.height) / 2), item);
+    // 구분선
+    final dividerX = originX + timeTp.$1.width + gap;
+    final dividerPaint = Paint()..color = item.textColor;
+    canvas.drawRect(
+      Rect.fromLTWH(
+        dividerX,
+        originY + (rowH - dividerH) / 2,
+        dividerW,
+        dividerH,
+      ),
+      dividerPaint,
+    );
+    // 날짜/연도 (행 내 수직 중앙 정렬된 2줄)
+    final dateColX = dividerX + dividerW + gap;
+    final dateColTop = originY + (rowH - dateColH) / 2;
+    _paintTm(canvas, dateTp, Offset(dateColX, dateColTop), item);
+    _paintTm(
+      canvas,
+      yearTp,
+      Offset(dateColX, dateColTop + dateTp.$1.height),
+      item,
+    );
+    // 주소 (하단 좌측 정렬)
+    if (locTp != null) {
+      _paintTm(canvas, locTp, Offset(originX, originY + rowH + gap2), item);
+    }
+  }
+
+  /// (fill, stroke, shadow?) TextPainter 묶음 생성.
+  static (TextPainter, TextPainter, TextPainter?) _tmText(
+    String text,
+    double fontSize,
+    FontWeight weight,
+    StampItem item, {
+    double? maxWidth,
+  }) {
+    final base = TextStyle(
+      fontSize: fontSize,
+      fontWeight: weight,
+      fontFamily: item.fontFamily,
+      height: 1.05,
+    );
+    TextPainter mk(TextStyle s) => TextPainter(
+      text: TextSpan(text: text, style: s),
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth ?? double.infinity);
+
+    final fill = mk(base.copyWith(color: item.textColor));
+    final stroke = mk(
+      base.copyWith(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = fontSize * 0.06
+          ..strokeJoin = StrokeJoin.round
+          ..color = item.strokeColor,
+      ),
+    );
+    final shadow = item.shadowColor == null
+        ? null
+        : mk(
+            base.copyWith(
+              foreground: Paint()
+                ..color = item.shadowColor!
+                ..maskFilter = item.shadowBlur > 0
+                    ? MaskFilter.blur(
+                        BlurStyle.normal,
+                        item.shadowBlur * (fontSize / 32.0),
+                      )
+                    : null,
+            ),
+          );
+    return (fill, stroke, shadow);
+  }
+
+  static void _paintTm(
+    Canvas canvas,
+    (TextPainter, TextPainter, TextPainter?) tp,
+    Offset offset,
+    StampItem item,
+  ) {
+    final shadow = tp.$3;
+    if (shadow != null) {
+      shadow.paint(canvas, offset + item.shadowOffset);
+    }
+    tp.$2.paint(canvas, offset);
+    tp.$1.paint(canvas, offset);
   }
 
   static TextSpan _span(

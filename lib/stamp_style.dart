@@ -17,6 +17,7 @@ enum StampTextTemplate {
   bottomBar,
   calendarMini,
   digitalClock,
+  timeMark,
 }
 
 enum StampFrameShape {
@@ -559,7 +560,27 @@ class StampStyle {
     lineHeight: 1.34,
   );
 
+  static final StampStyle timeMark = StampStyle(
+    id: 'timemark',
+    displayName: '타임마크',
+    fontFactory: () => GoogleFonts.robotoSlab(),
+    fontWeight: FontWeight.w700,
+    textColor: Colors.white,
+    strokeColor: const Color(0x66000000),
+    strokeRatio: 0.03,
+    template: StampTextTemplate.timeMark,
+    fontSizeScale: 1.0,
+    // [0]=시각(큰글씨) [1]=날짜 [2]=연도 [3]=주소
+    lineScales: const [1.0, 0.34, 0.30, 0.30],
+    shadowColor: const Color(0x99000000),
+    shadowOffset: const Offset(0, 1.5),
+    shadowBlur: 6,
+    letterSpacing: 0,
+    lineHeight: 1.1,
+  );
+
   static final List<StampStyle> all = [
+    timeMark,
     dietPoster,
     studyPoster,
     morningProof,

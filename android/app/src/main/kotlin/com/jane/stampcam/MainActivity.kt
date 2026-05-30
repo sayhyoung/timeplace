@@ -1,5 +1,7 @@
 package com.jane.stampcam
 
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -26,6 +28,23 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         } catch (e: Exception) {
                             result.error("share_failed", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "timeplace/device")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "totalMemoryMb" -> {
+                        try {
+                            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                            val mi = ActivityManager.MemoryInfo()
+                            am.getMemoryInfo(mi)
+                            val mb = (mi.totalMem / (1024L * 1024L)).toInt()
+                            result.success(mb)
+                        } catch (e: Exception) {
+                            result.error("mem_failed", e.message, null)
                         }
                     }
                     else -> result.notImplemented()

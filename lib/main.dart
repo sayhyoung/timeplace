@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
@@ -16,6 +17,7 @@ import 'stamp_settings.dart';
 import 'stamp_style.dart';
 import 'widgets/outlined_stamp_text.dart';
 import 'widgets/stamp_settings_sheet.dart';
+import 'widgets/timemark_stamp.dart';
 
 late List<CameraDescription> _cameras;
 
@@ -84,6 +86,9 @@ class _CameraScreenState extends State<CameraScreen>
   Timer? _savedBadgeTimer;
   bool _isCapturing = false;
   bool _useFrontCamera = false;
+  bool _initInFlight = false;
+  FlashMode _flashMode = FlashMode.off; // off → auto → always 순환
+  bool _lowEndDevice = false; // RAM이 적은 기기면 해상도 자동 하향
   Uint8List? _lastSavedThumb;
   String _statusMessage = '카메라 준비 중';
   int _timerSeconds = 0; // 0/3/5/10
@@ -107,7 +112,7 @@ class _CameraScreenState extends State<CameraScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initCamera();
+    _bootstrapCamera();
     _location.requestAndFetch();
     _restoreConfig();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -206,46 +211,72 @@ class _CameraScreenState extends State<CameraScreen>
     unawaited(ConfigStorage.save(updated));
   }
 
+  /// 기기 등급을 먼저 감지(짧은 타임아웃)한 뒤 카메라를 초기화한다.
+  /// 저사양 기기는 첫 세션부터 해상도가 낮아져 촬영 지연을 줄인다.
+  Future<void> _bootstrapCamera() async {
+    try {
+      await _detectDeviceTier().timeout(const Duration(milliseconds: 800));
+    } catch (_) {}
+    await _initCamera();
+  }
+
+  /// 기기 RAM을 조회해 저사양이면 촬영 해상도를 자동으로 낮춘다.
+  /// 네이티브 채널이 없거나 실패하면 고사양으로 간주(최대 해상도 유지).
+  Future<void> _detectDeviceTier() async {
+    try {
+      const channel = MethodChannel('timeplace/device');
+      final mb = await channel.invokeMethod<int>('totalMemoryMb');
+      if (mb != null && mb > 0 && mb < 3072) {
+        _lowEndDevice = true;
+      }
+    } catch (_) {
+      _lowEndDevice = false;
+    }
+  }
+
   Future<void> _initCamera() async {
     if (_cameras.isEmpty) {
       setState(() => _statusMessage = '시뮬레이터 미리보기 모드 (카메라 없음)');
       return;
     }
-    // 기존 컨트롤러를 먼저 정리해서 동시 활성 충돌 방지
-    final old = _controller;
-    if (old != null) {
-      _controller = null;
-      if (mounted) setState(() {});
-      try {
-        await old.dispose();
-      } catch (_) {}
-    }
-
-    final wantedLens = _useFrontCamera
-        ? CameraLensDirection.front
-        : CameraLensDirection.back;
-    final selected = _cameras.firstWhere(
-      (c) => c.lensDirection == wantedLens,
-      orElse: () => _cameras.first,
-    );
-    // 전면 카메라는 max에서 실패하는 기기가 있어 보수적으로 veryHigh
-    final preset = _useFrontCamera
-        ? ResolutionPreset.veryHigh
-        : ResolutionPreset.max;
-    final ctrl = CameraController(selected, preset, enableAudio: false);
+    if (_initInFlight) return; // 중복 초기화(빠른 탭+생명주기) 방지
+    _initInFlight = true;
     try {
-      await ctrl.initialize();
-      if (!mounted) {
-        await ctrl.dispose();
-        return;
+      // 기존 컨트롤러를 먼저 정리해서 동시 활성 충돌 방지
+      final old = _controller;
+      if (old != null) {
+        _controller = null;
+        if (mounted) setState(() {});
+        try {
+          await old.dispose();
+        } catch (_) {}
       }
-      setState(() {
-        _controller = ctrl;
-        _statusMessage = '카메라 준비 완료';
-      });
-    } catch (e) {
-      // 전면이 실패하면 high로 한 번 더 시도
-      if (_useFrontCamera) {
+
+      final wantedLens = _useFrontCamera
+          ? CameraLensDirection.front
+          : CameraLensDirection.back;
+      final selected = _cameras.firstWhere(
+        (c) => c.lensDirection == wantedLens,
+        orElse: () => _cameras.first,
+      );
+      // 저사양 기기는 max에서 인코딩이 매우 느리거나 실패하므로 해상도를 낮춘다.
+      final preset = _useFrontCamera
+          ? (_lowEndDevice ? ResolutionPreset.high : ResolutionPreset.veryHigh)
+          : (_lowEndDevice ? ResolutionPreset.veryHigh : ResolutionPreset.max);
+      final ctrl = CameraController(selected, preset, enableAudio: false);
+      try {
+        await ctrl.initialize();
+        if (!mounted) {
+          await ctrl.dispose();
+          return;
+        }
+        setState(() {
+          _controller = ctrl;
+          _statusMessage = '카메라 준비 완료';
+        });
+        await _applyFlashMode();
+      } catch (e) {
+        // 초기화 실패 시 한 단계 낮은 해상도로 한 번 더 시도
         try {
           final retry = CameraController(
             selected,
@@ -261,14 +292,37 @@ class _CameraScreenState extends State<CameraScreen>
             _controller = retry;
             _statusMessage = '카메라 준비 완료';
           });
-          return;
+          await _applyFlashMode();
         } catch (e2) {
-          setState(() => _statusMessage = '전면 카메라 초기화 실패: $e2');
-          return;
+          if (mounted) {
+            setState(() => _statusMessage = '카메라 초기화 실패: $e2');
+          }
         }
       }
-      setState(() => _statusMessage = '카메라 초기화 실패: $e');
+    } finally {
+      _initInFlight = false;
     }
+  }
+
+  /// 현재 플래시 모드를 컨트롤러에 적용. 전면 등 미지원이면 조용히 무시.
+  Future<void> _applyFlashMode() async {
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    try {
+      await ctrl.setFlashMode(_flashMode);
+    } catch (_) {}
+  }
+
+  void _cycleFlash() {
+    setState(() {
+      _flashMode = switch (_flashMode) {
+        FlashMode.off => FlashMode.auto,
+        FlashMode.auto => FlashMode.always,
+        _ => FlashMode.off,
+      };
+    });
+    _resetIdleTimer();
+    unawaited(_applyFlashMode());
   }
 
   Future<void> _flipCamera() async {
@@ -289,12 +343,31 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final ctrl = _controller;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
-    if (state == AppLifecycleState.inactive) {
-      ctrl.dispose();
-      _controller = null;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // 백그라운드 전환 시 카메라 자원을 반납한다.
+      final ctrl = _controller;
+      if (ctrl != null) {
+        _controller = null;
+        if (mounted) setState(() {});
+        ctrl.dispose();
+      }
     } else if (state == AppLifecycleState.resumed) {
+      // 복귀 시 재초기화. (이전 버전은 컨트롤러가 null이면 early-return 되어
+      // 영구 검은 화면이 되는 버그가 있었다.)
+      // 자체 절전 상태가 아니고, 이 화면이 최상단일 때만 즉시 살린다.
+      if (!_isIdle && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        _initCamera();
+      }
+    }
+  }
+
+  /// 컨트롤러가 없거나 미초기화면 다시 살린다. 화면 복귀·탭 시 호출.
+  void _ensureCameraAlive() {
+    if (_isIdle) return;
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized) {
       _initCamera();
     }
   }
@@ -346,8 +419,14 @@ class _CameraScreenState extends State<CameraScreen>
       final file = await ctrl.takePicture();
       final rawBytes = await file.readAsBytes();
       final capturedAt = DateTime.now();
-      // EXIF 회전을 픽셀에 반영해 스탬프-사진 방향 불일치 차단
-      final bytes = bakeExifOrientation(rawBytes);
+      // EXIF 회전 정규화 + 디코드를 백그라운드 isolate에서 처리한다.
+      // 최대 해상도 사진의 디코드/인코드를 UI 스레드에서 돌리면 저사양 기기
+      // (예: 갤럭시 T380)에서 촬영 직후 화면 전환이 수 초 지연되던 문제 해결.
+      final baked = await compute(bakeExifOrientationWithSize, rawBytes);
+      final bytes = baked.bytes;
+      final preSize = (baked.width > 0 && baked.height > 0)
+          ? Size(baked.width.toDouble(), baked.height.toDouble())
+          : null;
 
       // 비정상 종료 대비 임시 백업은 화면 전환을 막지 않도록 백그라운드에서 시작한다.
       backupFuture = CaptureBackup.stash(bytes);
@@ -361,6 +440,7 @@ class _CameraScreenState extends State<CameraScreen>
             address: _location.address,
             coordinate: _location.coordinate,
             initialConfig: _config,
+            initialImageSize: preSize,
           ),
         ),
       );
@@ -383,6 +463,7 @@ class _CameraScreenState extends State<CameraScreen>
           });
         }
       });
+      _ensureCameraAlive(); // 리뷰 도중 백그라운드됐다면 복귀 시 재시작
     } catch (_) {
       // 실패해도 백업은 남겨 둬 다음 실행에서 복구 시도
       if (!mounted) return;
@@ -400,6 +481,7 @@ class _CameraScreenState extends State<CameraScreen>
       context,
     ).push(MaterialPageRoute(builder: (_) => const LibraryScreen()));
     _resetIdleTimer();
+    _ensureCameraAlive(); // 복귀 시 검은 화면 방지
   }
 
   void _cycleTimer() {
@@ -434,6 +516,7 @@ class _CameraScreenState extends State<CameraScreen>
             Positioned.fill(child: _buildStampPreview()),
             if (_countdown != null) _buildCountdownOverlay(),
             _buildFlashOverlay(),
+            if (!_isIdle && _isPreviewBlank) _buildWakeHint(),
             if (_isIdle) _buildIdleOverlay(),
             Positioned(left: 18, top: 14, right: 18, child: _buildHeader()),
             Positioned(
@@ -450,10 +533,16 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _onPreviewTap() {
     if (_isIdle) {
-      _resetIdleTimer();
+      _resetIdleTimer(); // 절전 해제 + 카메라 재시작
       return;
     }
     _resetIdleTimer();
+    // 검은 화면(미초기화) 상태면 어디를 탭하든 먼저 카메라를 깨운다.
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      _ensureCameraAlive();
+      return;
+    }
     if (!_config.tapToCapture) return;
     _capture();
   }
@@ -485,6 +574,33 @@ class _CameraScreenState extends State<CameraScreen>
             color: Colors.white.withValues(
               alpha: _flashController.value * 0.85,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _isPreviewBlank {
+    if (_cameras.isEmpty || _isCapturing) return false;
+    final ctrl = _controller;
+    return ctrl == null || !ctrl.value.isInitialized;
+  }
+
+  Widget _buildWakeHint() {
+    // 탭은 아래 GestureDetector(_onPreviewTap)로 전달되어 카메라를 깨운다.
+    return const Positioned.fill(
+      child: IgnorePointer(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined, color: Colors.white70, size: 52),
+              SizedBox(height: 12),
+              Text(
+                '화면을 탭하면 카메라가 켜집니다',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
           ),
         ),
       ),
@@ -615,6 +731,8 @@ class _CameraScreenState extends State<CameraScreen>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _buildFlashButton(),
+                const SizedBox(width: 8),
                 _buildTimerButton(),
                 const SizedBox(width: 8),
                 _iconButton(
@@ -633,6 +751,39 @@ class _CameraScreenState extends State<CameraScreen>
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildFlashButton() {
+    final (icon, on, label) = switch (_flashMode) {
+      FlashMode.off => (Icons.flash_off, false, '플래시 끔'),
+      FlashMode.auto => (Icons.flash_auto, true, '플래시 자동'),
+      _ => (Icons.flash_on, true, '플래시 켬'),
+    };
+    return Semantics(
+      label: label,
+      button: true,
+      child: GestureDetector(
+        onTap: _cycleFlash,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.black.withAlpha(82),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: on ? const Color(0xFFFFCC00) : Colors.transparent,
+              width: 1.6,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            color: on ? const Color(0xFFFFCC00) : Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
     );
   }
 
@@ -714,6 +865,25 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  /// 라이브 프리뷰의 정보 스탬프. 타임마크는 전용 레이아웃을 쓴다.
+  Widget _buildInfoStamp(StampStyle style, List<String> infoLines) {
+    if (style.template == StampTextTemplate.timeMark) {
+      final isPortrait =
+          MediaQuery.orientationOf(context) == Orientation.portrait;
+      return TimeMarkStamp(
+        lines: infoLines,
+        fontSize: (isPortrait ? 18.0 : 13.0) * _config.fontScale,
+        style: style,
+      );
+    }
+    return _StampBubble(
+      lines: infoLines,
+      position: _config.position,
+      fontScale: _config.fontScale,
+      style: style,
+    );
+  }
+
   Widget _buildStampPreview() {
     return ListenableBuilder(
       listenable: _location,
@@ -737,12 +907,7 @@ class _CameraScreenState extends State<CameraScreen>
                   padding: const EdgeInsets.all(16),
                   child: _PreviewStampGroup(
                     position: _config.position,
-                    stamp: _StampBubble(
-                      lines: infoLines,
-                      position: _config.position,
-                      fontScale: _config.fontScale,
-                      style: style,
-                    ),
+                    stamp: _buildInfoStamp(style, infoLines),
                     memo: _MemoBubble(
                       text: memoText,
                       fontScale: _config.fontScale,
@@ -760,12 +925,7 @@ class _CameraScreenState extends State<CameraScreen>
                   alignment: _stampAlignment(_config.position),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: _StampBubble(
-                      lines: infoLines,
-                      position: _config.position,
-                      fontScale: _config.fontScale,
-                      style: style,
-                    ),
+                    child: _buildInfoStamp(style, infoLines),
                   ),
                 ),
               if (memoText != null)

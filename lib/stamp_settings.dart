@@ -616,7 +616,25 @@ class StampConfiguration {
           DateFormat('yyyy.MM.dd', 'en').format(date),
           place,
         ].whereType<String>().toList();
+      case StampTextTemplate.timeMark:
+        // 고정 구조: [0]=시각, [1]=날짜, [2]=연도, [3]=주소(선택)
+        // 주소만 선택적이며 항상 마지막에 와서 인덱스가 어긋나지 않는다.
+        final isKo = (place != null && _looksKorean(place));
+        final dateLine = isKo
+            ? DateFormat('M월 d일', 'ko').format(date)
+            : DateFormat('dd MMM', 'en').format(date);
+        return [
+          hm(isKo ? 'ko' : 'en'),
+          dateLine,
+          DateFormat('yyyy').format(date),
+          place,
+        ].whereType<String>().toList();
     }
+  }
+
+  /// 한글이 포함되어 있으면 한국어 로캘로 날짜를 표기.
+  bool _looksKorean(String s) {
+    return RegExp(r'[가-힣]').hasMatch(s);
   }
 
   String? _placeLine(AddressParts address, ({double lat, double lon})? coord) {

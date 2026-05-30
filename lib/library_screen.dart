@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
 import 'package:intl/intl.dart';
 import 'services/capture_db.dart';
 import 'services/capture_record.dart';
@@ -384,6 +385,18 @@ class _CaptureTile extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
+                      onPressed: () => _saveToAlbum(context),
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('앨범 저장'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
                       onPressed: record.id == null
                           ? null
                           : () => _chooseFolder(context),
@@ -489,6 +502,33 @@ class _CaptureTile extends StatelessWidget {
       return File(stampedPath);
     }
     return File(record.thumbnailPath);
+  }
+
+  /// 라이브러리 사진(스탬프 적용본 우선)을 기기 갤러리/앨범에 저장한다.
+  /// 다이어리 등 다른 앱에서 사진을 불러 쓸 수 있게 한다.
+  Future<void> _saveToAlbum(BuildContext context) async {
+    final file = _displayFile(record);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (!file.existsSync()) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('원본 파일을 찾을 수 없습니다.')),
+        );
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      await Gal.putImageBytes(
+        bytes,
+        name: 'timeplace_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      messenger.showSnackBar(
+        const SnackBar(content: Text('앨범에 저장했습니다.')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('앨범 저장에 실패했습니다. 저장 권한을 확인해 주세요.')),
+      );
+    }
   }
 
   Future<void> _share(BuildContext context) async {

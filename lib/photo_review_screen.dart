@@ -11,6 +11,7 @@ import 'stamp_settings.dart';
 import 'stamp_style.dart';
 import 'widgets/outlined_stamp_text.dart';
 import 'widgets/stamp_settings_sheet.dart';
+import 'widgets/timemark_stamp.dart';
 
 enum _ReviewPanelMode { style, color }
 
@@ -21,6 +22,10 @@ class PhotoReviewScreen extends StatefulWidget {
   final ({double lat, double lon})? coordinate;
   final StampConfiguration initialConfig;
 
+  /// 촬영 시 이미 디코드된 픽셀 크기. 주어지면 리뷰에서 재디코드를 생략해
+  /// 화면 진입 지연을 줄인다.
+  final Size? initialImageSize;
+
   const PhotoReviewScreen({
     super.key,
     required this.imageBytes,
@@ -28,6 +33,7 @@ class PhotoReviewScreen extends StatefulWidget {
     required this.address,
     required this.coordinate,
     required this.initialConfig,
+    this.initialImageSize,
   });
 
   @override
@@ -65,7 +71,12 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
       shutterSound: widget.initialConfig.shutterSound,
     );
     _moodId = _moodIdForStyle(_config.styleId);
-    _decodeImage();
+    final preSize = widget.initialImageSize;
+    if (preSize != null && preSize.width > 0 && preSize.height > 0) {
+      _imageSize = preSize;
+    } else {
+      _decodeImage();
+    }
   }
 
   Future<void> _decodeImage() async {
@@ -221,6 +232,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
           frameShape: style.frameShape.name,
           fullCanvasFrame: style.fullCanvasFrame,
           framePadding: style.framePadding,
+          template: style.template.name,
         ),
       );
     }
@@ -342,13 +354,25 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                 displaySize: Size(displayW, displayH),
                 center: _resolvedInfoCenter,
                 onMove: (c) => setState(() => _infoCenter = c),
-                child: _InfoBubble(
-                  lines: _infoLines,
-                  maxWidth: displayW * 0.84,
-                  fontScale: _config.fontScale,
-                  style: style,
-                  stampColor: _config.stampColor,
-                ),
+                child: style.template == StampTextTemplate.timeMark
+                    ? TimeMarkStamp(
+                        lines: _infoLines,
+                        fontSize:
+                            (MediaQuery.orientationOf(context) ==
+                                    Orientation.portrait
+                                ? 18.0
+                                : 13.0) *
+                            _config.fontScale,
+                        style: style,
+                        stampColor: _config.stampColor,
+                      )
+                    : _InfoBubble(
+                        lines: _infoLines,
+                        maxWidth: displayW * 0.84,
+                        fontScale: _config.fontScale,
+                        style: style,
+                        stampColor: _config.stampColor,
+                      ),
               ),
             if (_memoText != null)
               _buildDraggableStamp(
@@ -740,6 +764,8 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
         return StampPosition.bottomCenter;
       case 'english_top':
         return StampPosition.topRight;
+      case 'timemark':
+        return StampPosition.bottomLeft;
       default:
         return style.template == StampTextTemplate.standard
             ? _config.position
@@ -788,7 +814,7 @@ const List<_StyleMood> _moodCollections = [
     id: 'proof',
     label: '인증',
     icon: Icons.verified_outlined,
-    styleIds: ['minimal', 'report', 'compact', 'tiny_corner', 'bold'],
+    styleIds: ['timemark', 'minimal', 'report', 'compact', 'tiny_corner', 'bold'],
   ),
   _StyleMood(
     id: 'diary',
@@ -944,13 +970,20 @@ class _StylePreviewCard extends StatelessWidget {
                       Center(
                         child: Padding(
                           padding: const EdgeInsets.all(10),
-                          child: OutlinedStampText(
-                            text: _previewTextFor(style, lines),
-                            fontSize: compact ? 7.5 : 10,
-                            textAlign: TextAlign.center,
-                            style: style,
-                            stampColor: stampColor,
-                          ),
+                          child: style.template == StampTextTemplate.timeMark
+                              ? TimeMarkStamp(
+                                  lines: lines,
+                                  fontSize: compact ? 4.5 : 6,
+                                  style: style,
+                                  stampColor: stampColor,
+                                )
+                              : OutlinedStampText(
+                                  text: _previewTextFor(style, lines),
+                                  fontSize: compact ? 7.5 : 10,
+                                  textAlign: TextAlign.center,
+                                  style: style,
+                                  stampColor: stampColor,
+                                ),
                         ),
                       ),
                     ],
